@@ -11,30 +11,56 @@ import (
 )
 
 func main() {
-	urlFlag := flag.String("url", "https://gophercises.com", "the url that you want to build a sitemap")
+	urlFlag := flag.String("url", "https://go.dev", "the url that you want to build a sitemap")
+	maxDepth := flag.Int("Depth", 3, "Depth of searching")
 
-	// get sorted slice of links
-	links := get(*urlFlag)
+	sliceOfLinks := bfs(*urlFlag, *maxDepth)
 
-	for _, el := range links {
+	for _, el := range sliceOfLinks {
 		fmt.Println(el)
 	}
 
 }
 
-func get(requestUrl string) []string {
-	// site script
-	r, err := http.Get(requestUrl)
-	if err != nil {
-		panic(err)
+func bfs(urlFlag string, maxDepth int) []string {
+	seen := make(map[string]struct{})
+	var q map[string]struct{}
+	nq := map[string]struct{}{
+		urlFlag: {},
 	}
-	defer r.Body.Close()
+
+	for i := 0; i < maxDepth; i++ {
+		q, nq = nq, make(map[string]struct{})
+		for url := range q {
+			 if _, ok := seen[url]; ok {
+				continue
+			 }
+			 seen[url] = struct{}{}
+			 for _, link := range get(url){
+				nq[link] = struct{}{}
+			 }
+		}
+	}
+	ret := make([]string, 0, len(seen))
+	for url := range seen {
+		ret = append(ret, url)
+	}
+	return ret
+}
+
+func get(urlFlag string) []string {
+	// site script
+	siteScript, err := http.Get(urlFlag)
+	if err != nil {
+		return []string{}
+	}
+	defer siteScript.Body.Close()
 
 	// base = Scheme + Host
-	base := fmt.Sprint(r.Request.URL.Scheme + "/" + r.Request.URL.Host)
+	base := fmt.Sprint(siteScript.Request.URL.Scheme + "/" + siteScript.Request.URL.Host)
 
 	/*
-		urlBody := r.Request.URL
+		urlBody := siteScript.Request.URL
 		baseUrl := &url.URL{
 			Scheme: urlBody.Scheme,
 			Host:   urlBody.Host,
@@ -42,16 +68,16 @@ func get(requestUrl string) []string {
 		base := baseUrl.String()
 	*/
 
-	return filter(hrefs(r.Body, base), giveMeTrue(base))
+	return filter(hrefs(siteScript.Body, base), filterSetting(base))
 }
 
-func hrefs(r io.Reader, urlStr string) []string {
-	links, _ := link.Parse(r)
+func hrefs(siteBody io.Reader, base string) []string {
+	links, _ := link.Parse(siteBody)
 	var ret []string
 	for _, el := range links {
 		switch {
 		case strings.HasPrefix(el.Href, "/"):
-			ret = append(ret, urlStr+el.Href)
+			ret = append(ret, base+el.Href)
 		case strings.HasPrefix(el.Href, "http"):
 			ret = append(ret, el.Href)
 		}
@@ -59,21 +85,18 @@ func hrefs(r io.Reader, urlStr string) []string {
 	return ret
 }
 
-func filter(links []string, keepFn func(string) bool) []string {
+func filter(sliceOfLinks []string, settingFn func(string) bool) []string {
 	var ret []string
-	for _, el := range links {
-		if keepFn(el) {
+	for _, el := range sliceOfLinks {
+		if settingFn(el) {
 			ret = append(ret, el)
 		}
 	}
 	return ret
 }
 
-func giveMeTrue(prx string) func(string) bool {
+func filterSetting(prx string) func(string) bool {
 	return func(linkUrl string) bool {
-		if strings.HasPrefix(linkUrl, prx) {
-			return true
-		}
-		return false
+		return strings.HasPrefix(linkUrl, prx)
 	}
 }

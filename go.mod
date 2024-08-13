@@ -1,4 +1,4 @@
-module Builder
+module github.com/fancurson/sitemap
 
 go 1.22.5
 
